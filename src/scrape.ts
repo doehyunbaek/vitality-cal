@@ -1,232 +1,90 @@
 import { parse, HTMLElement } from "node-html-parser";
 import { decode } from "html-entities";
 
-/**
- * Returns an array of URLs of recent and upcoming UFC events
- */
-async function getEventURLs() {
-  // Get first two pages of event urls
-  const pageURLs = [
-    new URL("https://www.ufc.com/events?page=0"),
-    new URL("https://www.ufc.com/events?page=1"),
-  ];
 
-  try {
-    const eventURLs = (
-      await Promise.all(pageURLs.map(getEventURLsFromPageURL))
-    ).flat();
 
-    console.log("\nEvent URLs found:");
-    console.log(eventURLs.map((url) => url.href));
-    return eventURLs;
-  } catch (error) {
-    console.error(error);
-    throw new Error("Failed to retrieve event URLs");
-  }
-}
+async function getVitalityMatches(): Promise<UFCEvent[]> {
+  const url = new URL("https://www.hltv.org/team/9565/vitality#tab-matchesBox");
 
-async function getEventURLsFromPageURL(url: URL) {
   try {
     const response = await fetch(url);
     const text = await response.text();
     const root = parse(text);
 
-    // Extract the URLs of the relevant events from the HTML element
-    const eventURLElements = root.querySelectorAll(
-      ".c-card-event--result__headline"
-    );
-    const eventURLs = eventURLElements.map(
-      (html) =>
-        new URL(
-          `https://www.ufc.com${(html.firstChild as HTMLElement).getAttribute(
-            "href"
-          )}`
-        )
-    );
+    const matchesBox = root.querySelector("#matchesBox");
+    if (!matchesBox) throw new Error("Could not find matchesBox");
 
-    return eventURLs;
+    // Find all match tables (upcoming and recent)
+    const matchTables = matchesBox.querySelectorAll(".match-table");
+    const matches: UFCEvent[] = [];
+
+    matchTables.forEach((table) => {
+      // Find the event name from the previous .event-header-cell
+      let eventName = "";
+      let prev = table;
+      while (prev && prev.previousElementSibling) {
+        prev = prev.previousElementSibling;
+        if (
+          prev.tagName === "THEAD" &&
+          prev.querySelector(".event-header-cell")
+        ) {
+          eventName =
+            prev.querySelector(".event-header-cell a")?.textContent?.trim() ||
+            "";
+          break;
+        }
+      }
+
+      // For each match row
+      table.querySelectorAll("tr.team-row").forEach((row) => {
+        // Date
+        const dateUnix = row
+          .querySelector(".date-cell span")
+          ?.getAttribute("data-unix");
+        const date = dateUnix ? new Date(Number(dateUnix)).toISOString() : "";
+
+        // Teams
+        const team1 =
+          row.querySelector(".team-name.team-1")?.textContent?.trim() || "";
+        const team2 =
+          row.querySelector(".team-name.team-2")?.textContent?.trim() || "";
+
+        // Score/result
+        const scores = row.querySelectorAll(".score");
+        const score1 = scores[0]?.textContent?.trim() || "-";
+        const score2 = scores[1]?.textContent?.trim() || "-";
+        const result =
+          score1 !== "-" && score2 !== "-"
+            ? `${score1} : ${score2}`
+            : "TBD";
+
+        // Match link
+        const matchLink =
+          row.querySelector("a.matchpage-button, a.stats-button")?.getAttribute("href") || "";
+        const matchUrl = matchLink
+          ? `https://www.hltv.org${matchLink}`
+          : url.href;
+
+        matches.push({
+          name: `${team1} vs. ${team2}`,
+          url: new URL(matchUrl),
+          date,
+          location: "",
+          fightCard: [`Result: ${result}`],
+          mainCard: [],
+          prelims: [],
+          earlyPrelims: [],
+          prelimsTime: undefined,
+          earlyPrelimsTime: undefined,
+        });
+      });
+    });
+
+    return matches;
   } catch (error) {
     console.error(error);
-    throw new Error("Failed to retrieve event URLs from page URL");
+    throw new Error("Failed to retrieve Vitality matches");
   }
 }
 
-/**
- * Returns the output string of a fight given its HTML element list item
- */
-function convertLiToStr(li: HTMLElement) {
-  const bout = li.querySelector(".c-listing-fight__class-text")?.textContent;
-
-  let fightStr = "";
-
-  // Return only fight names without bout weightclass if formatting for
-  // an event is broken on the UFC event page
-  if (!bout) {
-    const textContent = li
-      .querySelector(".field--name-node-title")
-      ?.textContent?.trim()
-      .replace(" vs ", " vs. ");
-    if (!textContent) return "";
-    fightStr += `• ${textContent}`;
-    return fightStr;
-  }
-
-  let weightClass = "";
-
-  // Get weightclass in short form
-  if (bout.includes("Strawweight")) weightClass = "115";
-  else if (bout.includes("Flyweight")) weightClass = "125";
-  else if (bout.includes("Bantamweight")) weightClass = "135";
-  else if (bout.includes("Featherweight")) weightClass = "145";
-  else if (bout.includes("Lightweight")) weightClass = "155";
-  else if (bout.includes("Welterweight")) weightClass = "170";
-  else if (bout.includes("Middleweight")) weightClass = "185";
-  else if (bout.includes("Light Heavyweight")) weightClass = "205";
-  else if (bout.includes("Heavyweight")) weightClass = "265";
-  else if (bout.includes("Catchweight")) weightClass = "CW";
-
-  // Extract and format fighter names with weightclass
-  const red = li
-    .querySelector(".c-listing-fight__corner-name--red")
-    ?.textContent?.replaceAll("\n", "")
-    .replace(/\s+/g, " ")
-    .trim();
-  const blue = li
-    .querySelector(".c-listing-fight__corner-name--blue")
-    ?.textContent?.replaceAll("\n", "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!red || !blue) throw new Error("Failed to retrieve fighter names");
-
-  const ranks = li
-    .querySelectorAll(
-      ".c-listing-fight__ranks-row .js-listing-fight__corner-rank span"
-    )
-    .map((rank) => rank?.textContent);
-
-  const redRankStr = ranks[0] ? ` (${ranks[0]})` : "";
-  const blueRankStr = ranks[1] ? ` (${ranks[1]})` : "";
-  fightStr += `• ${red}${redRankStr} vs. ${blue}${blueRankStr} @${weightClass}`;
-
-  // Deentitize HTML entities
-  fightStr = decode(fightStr);
-
-  return fightStr;
-}
-
-/**
- * Returns the fight card details of a UFC event given its URL
- */
-async function getDetailsFromEventURL(url: URL) {
-  try {
-    const response = await fetch(url);
-    const text = await response.text();
-    const root = parse(text);
-
-    // Extract basic details of the event from the HTML
-    const headlinePrefix = root
-      .querySelector(".c-hero__headline-prefix")
-      ?.innerText.trim();
-    const headline = root
-      .querySelector(".c-hero__headline")
-      ?.innerText.replace(/\s\s+/g, " ")
-      .trim();
-    const date = root
-      .querySelector(".c-hero__headline-suffix")
-      ?.getAttribute("data-timestamp");
-
-    const prelimsTime = root
-      .querySelector("#prelims-card .c-event-fight-card-broadcaster__time")
-      ?.getAttribute("data-timestamp");
-    const earlyPrelimsTime = root
-      .querySelector("#early-prelims .c-event-fight-card-broadcaster__time")
-      ?.getAttribute("data-timestamp");
-
-    let name = `${headlinePrefix}: ${headline}`;
-    let location =
-      root
-        .querySelector(".field--name-venue")
-        ?.innerText.replaceAll("\n", "")
-        .replaceAll("   ", " ") || "";
-    let fightCard: string[] = [];
-    let mainCard: string[] = [];
-    let prelims: string[] = [];
-    let earlyPrelims: string[] = [];
-
-    console.log(`\nGetting details from url: ${url.href}`);
-
-    const mainCardElements = root.querySelectorAll(
-      "#main-card .l-listing__item"
-    );
-    // Check if main card and prelims have been announced
-    if (mainCardElements.length) {
-      // Main card has been announced, extract prelims
-      const prelimsElements = root.querySelectorAll(
-        "#prelims-card .l-listing__item"
-      );
-      const earlyPrelimsElements = root.querySelectorAll(
-        "#early-prelims .l-listing__item"
-      );
-
-      mainCard = mainCardElements.map(convertLiToStr);
-      prelims = prelimsElements.map(convertLiToStr);
-      earlyPrelims = earlyPrelimsElements.map(convertLiToStr);
-
-      console.log(`Main card length: ${mainCard.length}`);
-      console.log(`Prelims length: ${prelims.length}`);
-    } else {
-      // Main card has not been announced, extract entire fight card
-      const fightCardElements = root.querySelectorAll(
-        ".l-listing__group--bordered .l-listing__item"
-      );
-
-      fightCard = fightCardElements.map(convertLiToStr);
-
-      console.log(`Fight card length: ${fightCard.length}`);
-    }
-
-    // Deentitize HTML entities
-    [name, location] = [decode(name), decode(location)];
-
-    if (!name || !date) {
-      throw new Error("Failed to retrieve event details");
-    }
-
-    const details: UFCEvent = {
-      name,
-      url,
-      date,
-      location,
-      fightCard,
-      mainCard,
-      prelims,
-      earlyPrelims,
-      prelimsTime,
-      earlyPrelimsTime,
-    };
-    return details;
-  } catch (error) {
-    console.error(error);
-    throw new Error(`Failed to retrieve event: ${url.href}\n${error}`);
-  }
-}
-
-/**
- * Returns an array of details of recent and upcoming UFC events
- */
-async function getAllDetailedEvents() {
-  try {
-    const eventURLs = await getEventURLs();
-
-    // Get UFC events from URLs
-    const detailedEvents = await Promise.all(
-      eventURLs?.map(getDetailsFromEventURL)
-    );
-    return detailedEvents;
-  } catch (error) {
-    console.error(error);
-    throw new Error("Failed to retrieve all events");
-  }
-}
-
-export { getAllDetailedEvents };
+export { getVitalityMatches };
