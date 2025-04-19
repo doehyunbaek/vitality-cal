@@ -3,8 +3,8 @@ import * as fs from "fs";
 import { createEvents, type DateArray, type EventAttributes } from "ics";
 
 /**
- * Extracts the details of recent and upcoming UFC events, then creates an
- * ICS file named "UFC.ics" in the current directory containing these events
+ * Extracts the details of recent and upcoming Vitality events, then creates an
+ * ICS file named "Vitality.ics" in the current directory containing these events
  */
 async function createICS() {
   try {
@@ -17,9 +17,9 @@ async function createICS() {
     console.log("\nDetailed events:");
     console.log(formattedEvents);
 
-    // Create UFC.ics
+    // Create Vitality.ics
     const eventsData = createEvents(formattedEvents).value;
-    if (eventsData) fs.writeFileSync("UFC.ics", eventsData);
+    if (eventsData) fs.writeFileSync("Vitality.ics", eventsData);
   } catch (error) {
     console.error(error);
   }
