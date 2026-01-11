@@ -1,89 +1,122 @@
-import { parse, HTMLElement } from "node-html-parser";
-import { decode } from "html-entities";
+import { chromium } from "playwright";
 
+type Bo3MatchLink = {
+  href: string;
+  time: string;
+  team1: string;
+  team2: string;
+  score1: string | null;
+  score2: string | null;
+};
 
+function buildIsoDateFromHrefAndTime(href: string, time: string): string {
+  try {
+    const path = href.split("?")[0];
+    const segments = path.split("/");
+    const slugWithDate = segments[2]; // /matches/<slug-with-date>[/map]
+    if (!slugWithDate) return "";
+
+    const baseSlug = slugWithDate.split("/")[0];
+    const parts = baseSlug.split("-");
+    if (parts.length < 3) return "";
+
+    const day = parts[parts.length - 3];
+    const month = parts[parts.length - 2];
+    const year = parts[parts.length - 1];
+
+    const [hoursStr, minutesStr] = time.split(":");
+
+    const date = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hoursStr),
+      Number(minutesStr)
+    );
+
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toISOString();
+  } catch {
+    return "";
+  }
+}
 
 async function getVitalityMatches(): Promise<UFCEvent[]> {
-  const url = new URL("https://www.hltv.org/team/9565/vitality#tab-matchesBox");
+  const url = "https://bo3.gg/teams/vitality/matches";
+
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
 
   try {
-    const response = await fetch(url);
-    const text = await response.text();
-    const root = parse(text);
+    await page.goto(url, { waitUntil: "networkidle" });
 
-    const matchesBox = root.querySelector("#matchesBox");
-    if (!matchesBox) throw new Error("Could not find matchesBox");
+    // Give the client-side app a moment to render the matches table
+    await page.waitForTimeout(3000);
 
-    // Find all match tables (upcoming and recent)
-    const matchTables = matchesBox.querySelectorAll(".match-table");
-    const matches: UFCEvent[] = [];
+    const rawMatches: Bo3MatchLink[] = await page.$$eval(
+      'a[href^="/matches/"]',
+      (links) => {
+        const pattern = /-\d{2}-\d{2}-\d{4}(?:\b|\/)/;
 
-    matchTables.forEach((table) => {
-      // Find the event name from the previous .event-header-cell
-      let eventName = "";
-      let prev = table;
-      while (prev && prev.previousElementSibling) {
-        prev = prev.previousElementSibling;
-        if (
-          prev.tagName === "THEAD" &&
-          prev.querySelector(".event-header-cell")
-        ) {
-          eventName =
-            prev.querySelector(".event-header-cell a")?.textContent?.trim() ||
-            "";
-          break;
-        }
+        return (links as any[])
+          .map((a) => {
+            const href = (a as any).getAttribute("href") || "";
+            const timeEl = (a as any).querySelector(".time");
+            const time = timeEl?.textContent?.trim() || "";
+
+            const teamEls = Array.from(
+              (a as any).querySelectorAll(".c-match__team .team-name")
+            ) as any[];
+
+            const team1 = teamEls[0]?.textContent?.trim() || "";
+            const team2 = teamEls[1]?.textContent?.trim() || "";
+
+            const score1El = (a as any).querySelector(
+              ".c-match-score .score-1"
+            );
+            const score2El = (a as any).querySelector(
+              ".c-match-score .score-2"
+            );
+
+            const score1 = score1El?.textContent?.trim() || null;
+            const score2 = score2El?.textContent?.trim() || null;
+
+            return { href, time, team1, team2, score1, score2 };
+          })
+          .filter((m) => pattern.test(m.href));
       }
+    );
 
-      // For each match row
-      table.querySelectorAll("tr.team-row").forEach((row) => {
-        // Date
-        const dateUnix = row
-          .querySelector(".date-cell span")
-          ?.getAttribute("data-unix");
-        const date = dateUnix ? new Date(Number(dateUnix)).toISOString() : "";
+    const events: UFCEvent[] = rawMatches.map((match) => {
+      const isoDate = buildIsoDateFromHrefAndTime(match.href, match.time);
 
-        // Teams
-        const team1 =
-          row.querySelector(".team-name.team-1")?.textContent?.trim() || "";
-        const team2 =
-          row.querySelector(".team-name.team-2")?.textContent?.trim() || "";
+      const result =
+        match.score1 !== null && match.score2 !== null
+          ? `${match.score1} : ${match.score2}`
+          : "TBD";
 
-        // Score/result
-        const scores = row.querySelectorAll(".score");
-        const score1 = scores[0]?.textContent?.trim() || "-";
-        const score2 = scores[1]?.textContent?.trim() || "-";
-        const result =
-          score1 !== "-" && score2 !== "-"
-            ? `${score1} : ${score2}`
-            : "TBD";
+      const absoluteUrl = new URL(match.href, "https://bo3.gg");
 
-        // Match link
-        const matchLink =
-          row.querySelector("a.matchpage-button, a.stats-button")?.getAttribute("href") || "";
-        const matchUrl = matchLink
-          ? `https://www.hltv.org${matchLink}`
-          : url.href;
-
-        matches.push({
-          name: `${team1} vs. ${team2}`,
-          url: new URL(matchUrl),
-          date,
-          location: "",
-          fightCard: [`Result: ${result}`],
-          mainCard: [],
-          prelims: [],
-          earlyPrelims: [],
-          prelimsTime: undefined,
-          earlyPrelimsTime: undefined,
-        });
-      });
+      return {
+        name: `${match.team1 || "TBD"} vs. ${match.team2 || "TBD"}`,
+        url: absoluteUrl,
+        date: isoDate,
+        location: "",
+        fightCard: [`Result: ${result}`],
+        mainCard: [],
+        prelims: [],
+        earlyPrelims: [],
+        prelimsTime: undefined,
+        earlyPrelimsTime: undefined,
+      };
     });
 
-    return matches;
+    return events;
   } catch (error) {
     console.error(error);
     throw new Error("Failed to retrieve Vitality matches");
+  } finally {
+    await browser.close();
   }
 }
 
