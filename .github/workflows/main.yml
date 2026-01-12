@@ -16,6 +16,7 @@ jobs:
       - name: Create Vitality.ics
         run: |
           npm install
+          npx playwright install --with-deps chromium
           npm start
       - name: Push to repository
         run: |
