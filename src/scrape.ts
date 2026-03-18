@@ -48,7 +48,7 @@ async function getVitalityMatches(): Promise<UFCEvent[]> {
   const page = await browser.newPage();
 
   try {
-    await page.goto(url, { waitUntil: "networkidle" });
+    await page.goto(url, { waitUntil: "domcontentloaded" });
 
     // Give the client-side app a moment to render the matches table
     await page.waitForTimeout(3000);
