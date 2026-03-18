@@ -43,18 +43,17 @@ function buildIsoDateFromHrefAndTime(href: string, time: string): string {
 
 async function getVitalityMatches(): Promise<UFCEvent[]> {
   const url = "https://bo3.gg/teams/vitality/matches";
-  const matchRowSelector =
-    'a[href^="/matches/"]:not([href="/matches/current"]):not([href="/matches/finished"])';
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
   try {
-    await page.goto(url, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector(matchRowSelector, { timeout: 60000 });
+    await page.goto(url, { waitUntil: "networkidle", timeout: 900000 });
+    // Give the client-side app a moment to render the matches table
+    await page.waitForTimeout(3000);
 
     const rawMatches: Bo3MatchLink[] = await page.$$eval(
-      matchRowSelector,
+      'a[href^="/matches/"]',
       (links) => {
         const pattern = /-\d{2}-\d{2}-\d{4}(?:\b|\/)/;
 
@@ -86,8 +85,6 @@ async function getVitalityMatches(): Promise<UFCEvent[]> {
           .filter((m) => pattern.test(m.href));
       }
     );
-
-    console.log(`Found ${rawMatches.length} matched links`);
 
     const events: UFCEvent[] = rawMatches.map((match) => {
       const isoDate = buildIsoDateFromHrefAndTime(match.href, match.time);
