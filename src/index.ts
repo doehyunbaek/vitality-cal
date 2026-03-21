@@ -39,7 +39,7 @@ function formatEventForCalendar(event: UFCEvent): EventAttributes {
   let description = "";
 
   const location = event.location;
-  const uid = event.url.href;
+  const uid = `${event.url.href}#${date.getTime()}-${encodeURIComponent(event.name)}`;
   const calName = "HLTV";
 
   const calendarEvent = {
