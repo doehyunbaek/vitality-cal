@@ -1,12 +1,8 @@
-type UFCEvent = {
+type CalendarMatch = {
+  uid: string;
   name: string;
-  url: URL;
   date: string;
-  location: string;
-  fightCard: string[];
-  mainCard: string[];
-  prelims: string[];
-  earlyPrelims: string[];
-  prelimsTime: string | undefined;
-  earlyPrelimsTime: string | undefined;
+  updatedAt: string;
+  description: string;
+  url?: string;
 };
