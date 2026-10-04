@@ -20,7 +20,8 @@ webcal://raw.githubusercontent.com/doehyunbaek/vitality-cal/ics/Vitality.ics
    ```
    This prompts for the value; do not commit tokens or paste them into chat.
 3. Push these changes to `main`, then manually run **Update Vitality calendar**.
-   The workflow runs every four hours thereafter.
+   The workflow is scheduled at the start of every hour (UTC). GitHub Actions
+   may delay scheduled runs, especially at the top of the hour.
 4. Compare the logged upcoming-match count and generated feed with
    https://www.hltv.org/team/9565/vitality#tab-matchesBox to verify coverage.
    A local authenticated test on October 4, 2026 returned 96 dated matches,
