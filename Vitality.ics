@@ -920,4 +920,14 @@ DESCRIPTION:ESL Pro League\nGroup Stage\nStatus: finished\nVitality: 2\; Te
 URL:https://pro.eslgaming.com/csgo/proleague/
 DURATION:PT3H
 END:VEVENT
+BEGIN:VEVENT
+UID:pandascore-match-1711476@vitality-cal
+SUMMARY:Vitality vs. PARIVISION
+DTSTAMP:20261007T205034Z
+LAST-MODIFIED:20261007T205034Z
+DTSTART:20261009T110000Z
+DESCRIPTION:ESL Pro League\nPlayoffs\nStatus: not_started
+URL:https://pro.eslgaming.com/csgo/proleague/
+DURATION:PT3H
+END:VEVENT
 END:VCALENDAR
