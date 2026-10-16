@@ -923,4 +923,13 @@ DESCRIPTION:ESL Pro League\nPlayoffs\nStatus: finished\nVitality: 3\; MOUZ:
 URL:https://pro.eslgaming.com/csgo/proleague/
 DURATION:PT3H
 END:VEVENT
+BEGIN:VEVENT
+UID:pandascore-match-1752690@vitality-cal
+SUMMARY:Vitality vs. 9z
+DTSTAMP:20261016T115221Z
+LAST-MODIFIED:20261016T115221Z
+DTSTART:20261024T130000Z
+DESCRIPTION:PGL Masters\nGroup Stage\nStatus: not_started
+DURATION:PT3H
+END:VEVENT
 END:VCALENDAR
